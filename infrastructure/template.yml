@@ -1,0 +1,163 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Blog Services Stack Operations
+Parameters:
+  AppVersion:
+    Type: String
+    Default: 1.0.0
+  Environment:
+    Description: Environment name used for tagging
+    Type: String
+    Default: dev
+  S3Bucket:
+    Type: String
+    Default: 'bodywithbrain-artifact-bucket'
+  S3Key:
+    Type: String
+    Default: 'assets/'
+  BillingModeValue:
+    Default: PAY_PER_REQUEST
+    Type: String
+  HashKeyElementName:
+    Description: HashType PrimaryKey Name
+    Type: String
+    Default: id
+  HashKeyElementType:
+    Description: HashType PrimaryKey Type
+    Type: String
+    AllowedPattern: '[S|N]'
+    Default: S
+  SortKeyName:
+    Description: 'Optional name of the sort key.'
+    Type: String
+    Default: ''
+  SortKeyType:
+    Description: 'Type of the sort key (if SortKeyName is set).'
+    Type: String
+    Default: N
+    AllowedValues: [ S, N, B ]
+Resources:
+  BlogHandlerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: java11
+      MemorySize: 1024
+      Timeout: 50
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !Join [ "", [ !Ref S3Key, "aws-bodywithbrain.zip" ] ]
+      Handler: com.bodywithbrain.awsbackend.BlogLambda
+      Description: Bodywithbrain Blog Handler
+      FunctionName: !Sub '${AWS::StackName}-Blog-Lambda'
+      Role: !GetAtt BlogHandlerLambdaExecutionRole.Arn
+      TracingConfig:
+        Mode: Active
+      Environment:
+        Variables:
+          LOG_LEVEL: INFO
+  BlogLambdaLogGroup:
+    DependsOn: BlogHandlerLambda
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${BlogHandlerLambda}"
+  BlogLambdaVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref BlogHandlerLambda
+      Description: version
+  RestAPI:
+    DependsOn: BlogHandlerLambda
+    Description: Blog Lambda for integration with API Gateway
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Name: !Sub '${AWS::StackName}-Blog-API'
+      Body:
+        Fn::Transform:
+          Name: AWS::Include
+          Parameters:
+            Location: !Join [ '', [ 's3://', !Ref S3Bucket, '/', !Ref S3Key, 'openapi-spec.yml' ] ]
+        Parameters:
+          endpointConfigurationTypes: REGIONAL
+  RestAPIDevDeployment:
+    Type: 'AWS::ApiGateway::Deployment'
+    Properties:
+      RestApiId: !Ref RestAPI
+  RestApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "${AWS::StackName}-API-logs"
+  RestApiStage:
+    Type: "AWS::ApiGateway::Stage"
+    Properties:
+      DeploymentId: !Ref RestAPIDevDeployment
+#      AccessLogSetting:
+#        DestinationArn: !GetAtt RestApiLogGroup.Arn
+#        Format: '{ "requestId":"$context.requestId", "message":"$context.message", ip": "$context.identity.sourceIp", "caller":"$context.identity.caller", "user":"$context.identity.user","requestTime":"$context.requestTime", "httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath", "status":"$context.status","protocol":"$context.protocol", "responseLength":"$context.responseLength" }'
+      RestApiId: !Ref RestAPI
+      TracingEnabled: true
+      StageName: 'dev'
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          MetricsEnabled: 'true'
+  BlogHandlerLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Fn::GetAtt:
+          - BlogHandlerLambda
+          - Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+  BlogHandlerLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - apigateway.amazonaws.com
+                - cloudwatch.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName:
+            Fn::Join:
+              - "-"
+              - - Ref: AWS::StackName
+                - UseDBPolicy
+          PolicyDocument:
+            Statement:
+              - Action:
+                  - apigateway:PUT
+                  - apigateway:PATCH
+                  - apigateway:POST
+                  - apigateway:GET
+                  - execute-api:Invoke
+                  - lambda:InvokeFunction
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:PutLogEvents
+                  - logs:GetLogEvents
+                  - logs:FilterLogEvents
+                  - dynamodb:BatchWrite*
+                  - dynamodb:Delete*
+                  - dynamodb:Update*
+                  - dynamodb:PutItem
+                  - dynamodb:BatchGet*
+                  - dynamodb:DescribeStream
+                  - dynamodb:DescribeTable
+                  - dynamodb:Get*
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:PutSecretValue
+                  - secretsmanager:UpdateSecret
+                  - secretsmanager:ListSecrets
+                  - secretsmanager:GetSecretValue
+                Resource: "*"
+                Effect: Allow

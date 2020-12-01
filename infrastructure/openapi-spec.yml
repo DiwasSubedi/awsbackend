@@ -1,0 +1,46 @@
+---
+openapi: "3.0.1"
+info:
+  title: "TDM Service API - Partner Service API"
+  description: "TDM Service API - Partner Service API"
+  version: 1.0.0
+  contact:
+    email: diwas.subedi3@gmail.com
+    name: Diwas Subedi
+basePath: "/dev"
+paths:
+  /blog:
+    post:
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+      responses:
+        200:
+          description: "200 response"
+      x-amazon-apigateway-integration:
+        uri: {"Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BlogHandlerLambda.Arn}/invocations"}
+        responses:
+          default:
+            statusCode: "200"
+        passthroughBehavior: "when_no_match"
+        httpMethod: "POST"
+        contentHandling: "CONVERT_TO_TEXT"
+        type: "aws_proxy"
+    get:
+      consumes:
+        - "application/json"
+      produces:
+        - "application/json"
+      responses:
+        200:
+          description: "200 response"
+      x-amazon-apigateway-integration:
+        uri: {"Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BlogHandlerLambda.Arn}/invocations"}
+        responses:
+          default:
+            statusCode: "200"
+        passthroughBehavior: "when_no_match"
+        httpMethod: "POST"
+        contentHandling: "CONVERT_TO_TEXT"
+        type: "aws_proxy"
